@@ -18,10 +18,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/backends/profiler/cpu/metadata_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/xla_debug_info_manager.h"
-#include "xla/status.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -47,7 +47,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
       xla::XlaDebugInfoManager::Get()->StartTracing();
       trace_active_ = true;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status Stop() override {
@@ -55,7 +55,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
       xla::XlaDebugInfoManager::Get()->StopTracing(&debug_info_);
       trace_active_ = false;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status CollectData(tsl::profiler::XSpace* space) override {
@@ -70,7 +70,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
       }
       debug_info_.clear();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

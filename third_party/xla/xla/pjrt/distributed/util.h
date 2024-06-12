@@ -16,14 +16,14 @@ limitations under the License.
 #ifndef XLA_PJRT_DISTRIBUTED_UTIL_H_
 #define XLA_PJRT_DISTRIBUTED_UTIL_H_
 
+#include "absl/status/status.h"
 #include "grpcpp/support/status.h"
-#include "xla/status.h"
 
 namespace xla {
 
 inline absl::Status FromGrpcStatus(const ::grpc::Status& s) {
   if (s.ok()) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return absl::Status(static_cast<absl::StatusCode>(s.error_code()),
                         s.error_message());

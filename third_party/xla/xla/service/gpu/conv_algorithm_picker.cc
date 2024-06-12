@@ -288,16 +288,12 @@ std::string NumBytesToString(int64_t bytes) {
 }
 
 CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
+  se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(stream_executor);
   CudnnVersion cudnn_version;
-  if (auto* dnn = stream_executor->AsDnn()) {
-    absl::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
-    if (version_or.ok()) {
-      const auto& version = version_or.value();
-      cudnn_version.set_major(version.major_version());
-      cudnn_version.set_minor(version.minor_version());
-      cudnn_version.set_patch(version.patch());
-    }
-  }
+  cudnn_version.set_major(version.major_version());
+  cudnn_version.set_minor(version.minor_version());
+  cudnn_version.set_patch(version.patch());
+
   return cudnn_version;
 }
 
@@ -318,14 +314,11 @@ void PrintPlatformInfo(const se::Stream* stream) {
   LOG(ERROR) << "Driver: " << desc.driver_version();
   LOG(ERROR) << "Runtime: " << desc.runtime_version();
 
-  auto* dnn = se->AsDnn();
-  if (dnn) {
-    auto dnn_version = dnn->GetVersion();
-    if (dnn_version.ok()) {
-      auto v = dnn_version.value();
-      LOG(ERROR) << "cudnn version: " << v.major_version() << "."
-                 << v.minor_version() << "." << v.patch();
-    }
+  auto dnn_version = GetDnnVersionInfo(se);
+  if (dnn_version.ok()) {
+    auto v = dnn_version.value();
+    LOG(ERROR) << "cudnn version: " << v.major_version() << "."
+               << v.minor_version() << "." << v.patch();
   }
 }
 
@@ -769,7 +762,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   const bool cudnn_frontend_enabled =
       debug_options.xla_gpu_enable_cudnn_frontend();
-  const bool deterministic_ops = debug_options.xla_gpu_deterministic_ops();
+  const bool deterministic_ops =
+      debug_options.xla_gpu_deterministic_ops() ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops();
   bool allow_tf32 = true;
   // TODO(b/284371623): Properly set allow_tf32 even if instr==nullptr, which is
   // the case when running an AOT compiled executable with runtime autotuning.
@@ -879,7 +874,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
 
   const DebugOptions& debug_options =
       instr->GetModule()->config().debug_options();
-  const bool deterministic_ops = debug_options.xla_gpu_deterministic_ops();
+  const bool deterministic_ops =
+      debug_options.xla_gpu_deterministic_ops() ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops();
   const bool allow_tf32 = absl::c_all_of(
       instr->precision_config().operand_precision(),
       [](int precision) { return precision <= PrecisionConfig::HIGH; });

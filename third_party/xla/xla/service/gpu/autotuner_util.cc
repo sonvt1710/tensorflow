@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
@@ -81,7 +80,7 @@ static void SortAutotuneResults(AutotuneResults* results) {
 }
 
 // Serialize `results` to string as a proto.
-static absl::StatusOr<std::string> AutotuneResultsToString(
+absl::StatusOr<std::string> AutotuneResultsToString(
     const AutotuneResults& results, bool as_textproto) {
   if (as_textproto) {
     std::string textproto;
@@ -121,8 +120,12 @@ static void SerializeAutotuneEntry(AutotuneResults* results,
     const AutotuneResults& results) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const AutotuneResults::Entry& result : results.results()) {
-    autotune_cache[AutotuneCacheKey(result.device(), result.hlo())] =
-        result.result();
+    if (auto [it, inserted] = autotune_cache.emplace(
+            AutotuneCacheKey(result.device(), result.hlo()), result.result());
+        !inserted) {
+      return absl::InternalError(absl::StrCat(
+          "Duplicate autotuning result for ", it->first.ToString()));
+    }
   }
   return absl::OkStatus();
 }
@@ -130,6 +133,11 @@ static void SerializeAutotuneEntry(AutotuneResults* results,
 /*static*/ void AutotunerUtil::ClearAutotuneResults() {
   absl::MutexLock lock(&autotune_cache_mu);
   autotune_cache.clear();
+}
+
+/*static*/ bool AutotunerUtil::ResultCacheIsEmpty() {
+  absl::MutexLock lock(&autotune_cache_mu);
+  return autotune_cache.empty();
 }
 
 /* static*/ absl::StatusOr<se::DeviceMemoryBase> AutotunerUtil::CreateBuffer(

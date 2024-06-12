@@ -75,7 +75,7 @@ RocBlasType_t<T> *complex_cast(DeviceMemory<T> *a) {
   return reinterpret_cast<RocBlasType_t<T> *>(GpuMemoryMutable(a));
 }
 
-static string ToString(rocblas_status status) {
+static std::string ToString(rocblas_status status) {
 #define XVAL(x) \
   case x:       \
     return #x
@@ -452,8 +452,7 @@ Impl_DoBlasScal(wrap::rocblas_sscal, float,
  *    and ex functions expect the same type as the compute type (i.e. floats.)
  *
  **/
-using sei = StreamExecutorInterface;
-using GemmCallTrace = sei::GemmCallTrace;
+using GemmCallTrace = StreamExecutor::GemmCallTrace;
 
 // Log the GEMM operation if the logging mode is enabled.
 void ROCMBlas::MaybeLogGemmOp(GemmCallTrace::GemmType op,
@@ -1251,7 +1250,7 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
   }
 }
 
-absl::Status ROCMBlas::GetVersion(string *version) {
+absl::Status ROCMBlas::GetVersion(std::string *version) {
 #if TF_ROCM_VERSION >= 60300  // Not yet available in ROCM-6.1
   absl::MutexLock lock{&mu_};
   size_t len = 0;
@@ -1284,7 +1283,7 @@ void initialize_rocblas() {
         PluginRegistry::Instance()
             ->RegisterFactory<PluginRegistry::BlasFactory>(
                 rocm::kROCmPlatformId, "rocBLAS",
-                [](StreamExecutorInterface *parent) -> blas::BlasSupport * {
+                [](StreamExecutor *parent) -> blas::BlasSupport * {
                   gpu::GpuExecutor *rocm_executor =
                       dynamic_cast<gpu::GpuExecutor *>(parent);
                   if (rocm_executor == nullptr) {

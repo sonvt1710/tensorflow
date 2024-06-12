@@ -351,16 +351,14 @@ absl::Status CreateClientOnce(
   }
 
   if (use_creation_info) {
-    auto memory_spaces = xla::BuildMemorySpaces(pjrt_devices);
     std::unique_ptr<xla::PjRtClient> pjrt_client =
         std::make_unique<xla::StreamExecutorGpuClient>(
             platform_name, info->local_client, std::move(pjrt_devices),
-            std::move(memory_spaces),
             /*process_index=*/node_id,
             /*allocator=*/std::move(info->allocator),
             /*host_memory_allocator=*/std::move(info->host_memory_allocator),
             /*should_stage_host_to_device_transfers=*/true,
-            /*gpu_run_options=*/std::move(gpu_run_options));
+            /*gpu_run_options=*/std::move(gpu_run_options), kv_store);
     VLOG(2) << "PJRT GPU client with remote devices created.";
     status = SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
                                                     std::move(pjrt_client));

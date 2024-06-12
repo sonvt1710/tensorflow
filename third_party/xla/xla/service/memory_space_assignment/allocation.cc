@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -177,7 +177,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
     TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
         use.operand_number, replacement_instruction));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool Allocation::is_copy_like_allocation() const {
@@ -262,7 +262,7 @@ bool PinnedAllocation::operator==(const Allocation& other) const {
 absl::Status PinnedAllocation::Process() {
   if (is_scoped_allocation()) {
     // Nothing to do here for scoped allocations.
-    return OkStatus();
+    return absl::OkStatus();
   }
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
@@ -626,7 +626,7 @@ absl::Status SlicedCopyAllocation::CreateBitcastConcat(
       slices.front()->parent()->AddInstruction(HloInstruction::CreateCustomCall(
           shape, slices,
           xla::memory_space_assignment::kConcatBitcastCustomCall));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string SlicedCopyAllocation::SliceDetail::ToString() const {
@@ -695,7 +695,7 @@ absl::Status SlicedCopyAllocation::SliceDetail::CreateAsyncSlice(
                                      slice, {ShapeUtil::MakeShape(S32, {})}));
   copy_start = copy_done->mutable_operand(0);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool SlicedCopyAllocation::operator==(const Allocation& other) const {
@@ -732,7 +732,7 @@ absl::Status MirroredAllocation::Process() {
   set_original_defining_position(original_allocation_.defining_position());
   if (is_scoped_allocation()) {
     // Nothing to do here for scoped allocations.
-    return OkStatus();
+    return absl::OkStatus();
   }
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
@@ -789,7 +789,7 @@ absl::Status ParentAllocation::Process() {
 
   if (is_scoped_allocation()) {
     // Nothing to do here for scoped allocations.
-    return OkStatus();
+    return absl::OkStatus();
   }
   HloInstruction* final_instruction = AddGetTupleElements();
   HloComputation* computation = final_instruction->parent();
@@ -809,7 +809,7 @@ absl::Status ParentAllocation::PostProcess() {
                           original_defining_position().index));
   while_body->set_root_instruction(new_while_body_root,
                                    /*accept_different_shape=*/true);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ParentAllocation::MarkIfNeeded(

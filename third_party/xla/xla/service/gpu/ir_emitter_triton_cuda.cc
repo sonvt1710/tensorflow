@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/triton_sparse_extensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
@@ -63,34 +64,33 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       absl::StrFormat("cuda:%u", ccAsInt), config.num_warps, threadsPerWarp,
       config.num_ctas));
-  pm.addPass(mt::gpu::createCoalescePass());
+  pm.addPass(createAddSparseDotEncodingPass(config.num_warps, threadsPerWarp,
+                                            config.num_ctas));
+  pm.addPass(mt::gpu::createTritonGPUCoalesce());
   if (ccCuda.IsAtLeastAmpere()) {
-    pm.addPass(mt::gpu::createF32DotTCPass());
+    pm.addPass(mt::gpu::createTritonGPUF32DotTC());
   }
   pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
-  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
-  pm.addPass(mt::gpu::createAccelerateMatmulPass(ccAsInt));
-  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createOptimizeDotOperandsPass(ccCuda.IsAtLeastAmpere()));
+  pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  pm.addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
+  pm.addPass(mt::gpu::createTritonGPUAccelerateMatmul());
+  pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  pm.addPass(
+      mt::gpu::createTritonGPUOptimizeDotOperands({ccCuda.IsAtLeastAmpere()}));
   pm.addPass(mlir::createCSEPass());
 
-  pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
-                                         config.num_ctas, ccAsInt));
-
-  if (!ccCuda.IsAtLeastHopper()) {
-    pm.addPass(mt::gpu::createPrefetchPass());
+  // Even though we don't run on pre-Ampere architectures anymore, we keep this
+  // check for consistency with the upstream pipeline
+  if (ccCuda.IsAtLeastAmpere()) {
+    pm.addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
+    pm.addPass(mt::gpu::createTritonGPUPipeline({config.num_stages}));
   }
-
-  pm.addPass(mt::gpu::createOptimizeDotOperandsPass(ccCuda.IsAtLeastAmpere()));
-  // We need to disable this pass because it undoes the hoisting of dot_operand
-  // layout conversion done in
-  // triton/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp in
-  // HoistLayoutConversion pattern.
-  // Bug: b/331360119
-  // pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createReduceDataDuplicationPass());
-  pm.addPass(mt::gpu::createReorderInstructionsPass());
+  pm.addPass(mt::gpu::createTritonGPUPrefetch());
+  pm.addPass(
+      mt::gpu::createTritonGPUOptimizeDotOperands({ccCuda.IsAtLeastAmpere()}));
+  pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  pm.addPass(mt::gpu::createTritonGPUReduceDataDuplication());
+  pm.addPass(mt::gpu::createTritonGPUReorderInstructions());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
   if (ccCuda.IsAtLeastHopper()) {

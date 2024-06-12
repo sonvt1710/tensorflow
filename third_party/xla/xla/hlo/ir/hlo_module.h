@@ -456,7 +456,7 @@ class HloModule {
       bool prohibit_empty_literal = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  absl::StatusOr<HloModuleProtoWithConfig> ToProtoWithConfig() const;
+  HloModuleProtoWithConfig ToProtoWithConfig() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto,
       bool prohibit_empty_literal = true);
@@ -618,7 +618,7 @@ class HloModule {
         cross_program_prefetches_[prefetch_index];
     TF_RET_CHECK(!optional_offset.has_value());
     optional_offset = offset;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Get the list of program arguments to be prefetch across programs.

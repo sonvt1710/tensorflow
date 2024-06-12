@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -31,7 +30,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -57,6 +55,13 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/ml_dtypes.h"
 
+namespace tsl {
+// Forward declare AsyncValueRef to enable implicit conversion from XLA errors
+// to error async values.
+template <typename T>
+class AsyncValueRef;
+}  // namespace tsl
+
 namespace xla {
 
 // Converts the unsigned integer n into a mixed-radix representation with the
@@ -71,10 +76,10 @@ std::vector<int64_t> ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds);
 
 // Logs the provided status message with a backtrace.
 //
-// For use by Status-factories, logs a backtrace at the point where the status
-// is created, such that we can use --vmodule=util=1 to see all status
+// For use by absl::Status-factories, logs a backtrace at the point where the
+// status is created, such that we can use --vmodule=util=1 to see all status
 // creation backtraces.
-Status WithLogBacktrace(const Status& status);
+absl::Status WithLogBacktrace(const absl::Status& status);
 
 // Ranks greater than 6 are very rare, so use InlinedVector<int64_t, 6> to store
 // the bounds and indices. And for the rare cases of ranks greater than 6,
@@ -207,10 +212,10 @@ void StridedCopy(D* dest, int64_t dest_stride, const S* src, int64_t src_stride,
 }
 
 // Adds some context information to the error message in a
-// Status.  This is useful as Statuses are
+// absl::Status.  This is useful as absl::Statuses are
 // propagated upwards.
-Status AddStatus(Status prior, absl::string_view context);
-Status AppendStatus(Status prior, absl::string_view context);
+absl::Status AddStatus(absl::Status prior, absl::string_view context);
+absl::Status AppendStatus(absl::Status prior, absl::string_view context);
 
 // The following three macros define a common set of code for creating
 // absl::Status errors with the given error_type, with the addition of adding
@@ -221,7 +226,7 @@ Status AppendStatus(Status prior, absl::string_view context);
 //
 // template <typename... Args>
 // struct ResourceExhausted {
-//   Status status;
+//   absl::Status status;
 // #if defined(PLATFORM_GOOGLE)
 //   // NOLINTNEXTLINE(google-explicit-constructor)
 //   ResourceExhausted(const absl::FormatSpec<Args...>& format, Args&&... args,
@@ -238,16 +243,21 @@ Status AppendStatus(Status prior, absl::string_view context);
 // #endif
 //
 //   // NOLINTNEXTLINE(google-explicit-constructor)
-//   operator Status() const { return status; }
+//   operator absl::Status() const { return status; }
 // };
 //
 #define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_PREFIX(error_type) \
   template <typename... Args>                                     \
   struct error_type {                                             \
-    Status status;
+    absl::Status status;
 #define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX(error_type)        \
   /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
-  operator Status() const { return status; }                             \
+  operator absl::Status() const { return status; }                       \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
+  template <typename T>                                                  \
+  operator tsl::AsyncValueRef<T>() const {                               \
+    return status;                                                       \
+  }                                                                      \
   }                                                                      \
   ;                                                                      \
   /*Deduction guide to make variadic arguments play nice with default */ \
@@ -269,8 +279,8 @@ Status AppendStatus(Status prior, absl::string_view context);
 #else
 #define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(error_type)          \
   template <typename... Args>                                       \
-  Status error_type(const absl::FormatSpec<Args...>& format,        \
-                    const Args&... args) {                          \
+  absl::Status error_type(const absl::FormatSpec<Args...>& format,  \
+                          const Args&... args) {                    \
     return WithLogBacktrace(                                        \
         absl::error_type##Error(absl::StrFormat(format, args...))); \
   }
@@ -299,7 +309,7 @@ XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unknown);
 //
 // template <typename... Args>
 // struct ResourceExhaustedStrCat {
-//   Status status;
+//   absl::Status status;
 // #if defined(PLATFORM_GOOGLE)
 //   // NOLINTNEXTLINE(google-explicit-constructor)
 //   ResourceExhaustedStrCat(Args&&... concat, absl::SourceLocation loc =
@@ -317,17 +327,17 @@ XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unknown);
 // #endif
 //
 //   // NOLINTNEXTLINE(google-explicit-constructor)
-//   operator Status() const { return status; }
+//   operator absl::Status() const { return status; }
 // };
 //
 #define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type) \
   template <typename... Args>                                  \
   struct error_type##StrCat {                                  \
-    Status status;                                             \
+    absl::Status status;                                       \
     /* NOLINTNEXTLINE(google-explicit-constructor) */
 #define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)           \
   /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
-  operator Status() const { return status; }                             \
+  operator absl::Status() const { return status; }                       \
   }                                                                      \
   ;                                                                      \
   /*Deduction guide to make variadic arguments play nice with default */ \
@@ -714,6 +724,10 @@ std::unique_ptr<Derived> unique_ptr_down_cast(std::unique_ptr<Base> ptr) {
 
 int64_t Product(absl::Span<const int64_t> xs);
 
+// Returns an array of results after performing elementwise product of a and b.
+std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
+                                     absl::Span<const int64_t> b);
+
 // Returns the start indices of consecutive non-overlapping subsequences of `a`
 // and `b` with the same product, i.e. `(i, j)` so
 // • a = {a[0 = i_0], ..., a[i_1 - 1], a[i_1], ... , a[i_2 - 1], ...}
@@ -788,13 +802,13 @@ bool IsInt32(T x) {
 }
 
 template <typename T>
-Status EraseElementFromVector(std::vector<T>* container, const T& value) {
+absl::Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   // absl::c_find returns a const_iterator which does not seem to work on
   // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
   auto it = std::find(container->begin(), container->end(), value);
   TF_RET_CHECK(it != container->end());
   container->erase(it);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Takes a sequence of unpacked n-bit values, such that every byte stores one

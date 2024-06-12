@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -71,7 +72,6 @@ limitations under the License.
 #include "xla/service/time_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -1033,7 +1033,7 @@ absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1477,7 +1477,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
         VLOG(2) << "Repacking.";
         auto repack_status =
             options_.repacker->Repack(absl::MakeSpan(repack_allocation_blocks));
-        CHECK_EQ(repack_status.status(), OkStatus());
+        CHECK_EQ(repack_status.status(), absl::OkStatus());
         VLOG(2) << "Repack complete. Modified = " << *repack_status;
         // For debug and testing purpose, also update allocations if
         // repack_after_every_allocation is on.
@@ -1525,7 +1525,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
     VLOG(2) << "Final Repacking.";
     auto repack_status =
         options_.repacker->Repack(absl::MakeSpan(repack_allocation_blocks));
-    CHECK_EQ(repack_status.status(), OkStatus());
+    CHECK_EQ(repack_status.status(), absl::OkStatus());
     VLOG(2) << "Final Repack complete. Modified = " << *repack_status;
   }
 
@@ -3377,7 +3377,7 @@ void MsaAlgorithm::ImportRepackedSlicedAllocation(
 absl::Status MsaAlgorithm::AreRepackedSlicesValid(
     const RepackAllocationBlock& block) {
   if (!block.repacked_slice_data.has_value()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!block.original_slice_data.has_value()) {
     return InvalidArgumentStrCat(
@@ -3418,7 +3418,7 @@ absl::Status MsaAlgorithm::AreRepackedSlicesValid(
         "mappings.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MsaAlgorithm::UncommitPendingChunks(
@@ -3721,25 +3721,32 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(
                      return allocation->memory_space() == MemorySpace::kDefault;
                    });
 
-  if (prev_allocation_in_default_mem_it == allocation_sequence->rend() &&
-      prev_allocation_it != allocation_sequence->rend() &&
-      (*prev_allocation_it)->memory_space() == MemorySpace::kAlternate &&
-      (*prev_allocation_it)->defining_position() == defining_position &&
-      !request.allocation_value->requires_contiguous_allocation()) {
-    // If there was an allocation for this HloValue that was in the alternate
-    // memory space, we also need to perform an eviction.
-    Result eviction_result = Evict(request);
-    if (eviction_result != Result::kSuccess) {
-      // A non-success eviction requires us to uncommit previous allocations.
-      return result_mark(Result::kFailRequiresUncommit, eviction_result);
+  if (!request.allocation_value->requires_contiguous_allocation()) {
+    if (prev_allocation_in_default_mem_it == allocation_sequence->rend() &&
+        prev_allocation_it != allocation_sequence->rend() &&
+        (*prev_allocation_it)->memory_space() == MemorySpace::kAlternate &&
+        (*prev_allocation_it)->defining_position() == defining_position) {
+      // If there was an allocation for this HloValue that was in the alternate
+      // memory space, we also need to perform an eviction.
+      Result eviction_result = Evict(request);
+      if (eviction_result != Result::kSuccess) {
+        // A non-success eviction requires us to uncommit previous allocations.
+        return result_mark(Result::kFailRequiresUncommit, eviction_result);
+      }
+      prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
+    } else if (prev_allocation_in_default_mem_it ==
+               allocation_sequence->rend()) {
+      allocation_sequence->push_back(std::make_unique<PinnedAllocation>(
+          defining_position, MemorySpace::kDefault,
+          /*chunk=*/std::nullopt, request.inclusive_start_time,
+          request.end_time,
+          /*is_scoped_allocation=*/false));
+      prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
     }
-    prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
   } else if (prev_allocation_in_default_mem_it == allocation_sequence->rend()) {
-    allocation_sequence->push_back(std::make_unique<PinnedAllocation>(
-        defining_position, MemorySpace::kDefault,
-        /*chunk=*/std::nullopt, request.inclusive_start_time, request.end_time,
-        /*is_scoped_allocation=*/false));
-    prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
+    VLOG(3) << "Allocation requires contiguous allocation, but it wasn't "
+               "possible to find one.";
+    return result_mark(Result::kFailRequiresUncommit, allocation_result);
   }
 
   CHECK(prev_allocation_in_default_mem_it != allocation_sequence->rend());

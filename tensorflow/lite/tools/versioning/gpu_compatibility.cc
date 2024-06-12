@@ -458,6 +458,11 @@ absl::Status CheckAddMulBroadcastCompatibility(
                shorter_dims->at(1) == 1) {
       // Broadcasting 2D [1, 1] to 4D [1, x, y, z] works.
       is_broadcastable = true;
+    } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
+               longer_dims->at(0) == shorter_dims->at(0) &&
+               longer_dims->at(3) == shorter_dims->at(1)) {
+      // Broadcasting 2D [b, c] to 4D [b, x, y, c] works.
+      is_broadcastable = true;
     }
 
     if (!is_broadcastable) {
@@ -593,6 +598,18 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       return absl::OkStatus();
     }
 
+    case kTfLiteBuiltinDynamicUpdateSlice: {
+      if (op_sig.inputs.size() != 3) {
+        return absl::UnimplementedError(
+            "DynamicUpdateSlice requires 3 inputs.");
+      }
+      OpSignatureTensorSpec array_to_update = op_sig.inputs[0];
+      if (array_to_update.dims.size() != 4) {
+        return absl::UnimplementedError(
+            "DynamicUpdateSlice only supports 4D array_to_update.");
+      }
+      return absl::OkStatus();
+    }
     case kTfLiteBuiltinFullyConnected: {
       const TfLiteFullyConnectedParams* tf_options;
       RETURN_IF_ERROR(RetrieveBuiltinData(op_sig, &tf_options));

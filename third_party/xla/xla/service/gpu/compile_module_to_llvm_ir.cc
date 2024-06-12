@@ -26,6 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
@@ -59,7 +61,6 @@ limitations under the License.
 #include "xla/service/hlo_ordering.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -102,41 +103,27 @@ void RemoveUnusedAndUninitializedGlobals(
 
 }  // namespace
 
-void ForAllThunks(const std::function<void(Thunk*)>& fn,
-                  ThunkSequence* thunk_sequence) {
-  for (std::unique_ptr<Thunk>& thunk : *thunk_sequence) {
-    if (thunk->kind() == Thunk::kConditional) {
-      auto* cond_thunk = tensorflow::down_cast<ConditionalThunk*>(thunk.get());
-      for (const std::unique_ptr<SequentialThunk>& branch_thunks :
-           cond_thunk->branch_thunks()) {
-        ForAllThunks(fn, &branch_thunks->thunks());
-      }
-    } else if (thunk->kind() == Thunk::kSequential) {
-      auto* sequential_thunk =
-          tensorflow::down_cast<SequentialThunk*>(thunk.get());
-      ForAllThunks(fn, &sequential_thunk->thunks());
-    } else if (thunk->kind() == Thunk::kWhile) {
-      auto* while_thunk = tensorflow::down_cast<WhileThunk*>(thunk.get());
-      ForAllThunks(fn, &while_thunk->condition_thunk_sequence()->thunks());
-      ForAllThunks(fn, &while_thunk->body_thunk_sequence()->thunks());
-    } else {
-      fn(thunk.get());
-    }
-  }
-}
-
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,
     const se::DeviceDescription& gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
-    const BufferValue::SizeFunction& buffer_size_bytes_function) {
+    const BufferValue::SizeFunction& buffer_size_bytes_function,
+    bool split_constants_module) {
   CompileModuleResults results;
   results.llvm_module =
       std::make_unique<llvm::Module>(hlo_module->name(), *llvm_context);
   results.llvm_module->setTargetTriple(target_triple);
   results.llvm_module->setDataLayout(data_layout);
+
+  if (split_constants_module) {
+    // Constants are emitted into a separate module to avoid caching them.
+    results.llvm_module_constants = std::make_unique<llvm::Module>(
+        absl::StrCat(hlo_module->name(), "_consts"), *llvm_context);
+    results.llvm_module_constants->setTargetTriple(target_triple);
+    results.llvm_module_constants->setDataLayout(data_layout);
+  }
 
   {
     tsl::profiler::ScopedAnnotation annotation([&] {
@@ -160,9 +147,12 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
                 : BufferAssigner::DefaultColorer(),
             /*must_not_live_out=*/{}, can_share_buffer_function));
   }
-
   VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"
           << results.buffer_assignment->GetStats().ToString();
+
+  results.execution_stream_assignment =
+      std::make_unique<ExecutionStreamAssignment>(hlo_module);
+
   struct GetCcStr {
     std::string operator()(const se::CudaComputeCapability& cc) const {
       return absl::StrCat("sm_", cc.ToString());
@@ -196,9 +186,10 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
                            hlo_module->name(), hlo_module->unique_id());
   });
   IrEmitterContext ir_emitter_context(
-      hlo_module, results.buffer_assignment.get(), platform_name,
-      gpu_device_info, mlir_context.get(), results.llvm_module.get(),
-      /*emit_kernels=*/true);
+      hlo_module, results.buffer_assignment.get(),
+      results.execution_stream_assignment.get(), platform_name, gpu_device_info,
+      mlir_context.get(), results.llvm_module.get(),
+      results.llvm_module_constants.get(), /*emit_kernels=*/true);
 
   std::vector<BufferAllocation*> allocations;
   results.output_shape = hlo_module->result_shape();
@@ -222,8 +213,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     if (supports_runtime_managed_constants) {
       // Remove these globals from the generated code to indicate that XLA is
       // responsible for allocating and initializing them.
-      RemoveUnusedAndUninitializedGlobals(ir_emitter_context.llvm_module(),
-                                          ir_emitter_context.constants());
+      RemoveUnusedAndUninitializedGlobals(
+          ir_emitter_context.llvm_module_constants(),
+          ir_emitter_context.constants());
     }
 
     results.constants = std::move(ir_emitter_context.constants());
@@ -234,10 +226,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
-  auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
-  ForAllThunks([](Thunk* thunk) { thunk->ClearCompileTimeInfo(); },
-               thunk_sequence.get());
-  results.executable = std::move(thunk_sequence);
+  results.executable = ir_emitter->ConsumeThunkSequence();
 
   return results;
 }

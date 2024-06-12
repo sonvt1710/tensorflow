@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuner_util.h"
@@ -49,10 +50,12 @@ class GemmFusionAutotuner : public HloModulePass {
  public:
   explicit GemmFusionAutotuner(const AutotuneConfig& config,
                                const int32_t toolkit_version,
-                               tsl::thread::ThreadPool* thread_pool)
+                               tsl::thread::ThreadPool* thread_pool,
+                               const MultiProcessKeyValueStore& key_value_store)
       : config_(config),
         toolkit_version_(toolkit_version),
-        thread_pool_(thread_pool) {}
+        thread_pool_(thread_pool),
+        key_value_store_(key_value_store) {}
 
   absl::string_view name() const override { return "triton-autotuner"; }
 
@@ -65,6 +68,7 @@ class GemmFusionAutotuner : public HloModulePass {
   const AutotuneConfig config_;
   const int32_t toolkit_version_;
   tsl::thread::ThreadPool* thread_pool_;
+  MultiProcessKeyValueStore key_value_store_;
 };
 
 // Autotuner implementation.
@@ -87,6 +91,8 @@ class GemmFusionAutotunerImpl {
     bool operator<(const CuDnnConfig& other) const;
   };
   using Config = std::variant<CuBlasConfig, CuDnnConfig, TritonGemmConfig>;
+  using TilingConfigs =
+      std::vector<std::pair<const HloFusionInstruction*, std::vector<Config>>>;
 
   struct ExecutableCandidate {
     Config config;
@@ -102,9 +108,7 @@ class GemmFusionAutotunerImpl {
   // Compile all executables for all fusions.
   absl::StatusOr<absl::flat_hash_map<const HloFusionInstruction*,
                                      std::vector<ExecutableCandidate>>>
-  CompileAll(AutotunerCompileUtil& compile_util,
-             const absl::flat_hash_map<const HloFusionInstruction*,
-                                       std::vector<Config>>& task);
+  CompileAll(AutotunerCompileUtil& compile_util, const TilingConfigs& task);
 
   // Profile all executables for a fusion.
   absl::StatusOr<std::vector<AutotuneResult>> Profile(
@@ -113,9 +117,7 @@ class GemmFusionAutotunerImpl {
 
   // Autotune and save the results to the autotuning cache.
   absl::Status Autotune(
-      AutotunerCompileUtil& compile_util,
-      const absl::flat_hash_map<const HloFusionInstruction*,
-                                std::vector<Config>>& gemm_config_sets,
+      AutotunerCompileUtil& compile_util, const TilingConfigs& gemm_config_sets,
       absl::flat_hash_map<AutotuneCacheKey, uint64_t> fusion_count_map);
 
   // Helper methods.

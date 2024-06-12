@@ -51,7 +51,8 @@ struct CudaComputeCapability {
     PASCAL_ = 6,
     VOLTA = 7,
     AMPERE = 8,
-    HOPPER = 9
+    HOPPER = 9,
+    BLACKWELL = 10
   };
 
   constexpr CudaComputeCapability() = default;
@@ -166,7 +167,6 @@ class RocmComputeCapability {
       : gcn_arch_name_(proto.gcn_arch_name()) {}
 
   RocmComputeCapability() = default;
-  ~RocmComputeCapability() = default;
 
   std::string gcn_arch_name() const { return gcn_arch_name_; }
 
