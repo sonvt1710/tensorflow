@@ -24,26 +24,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
-#include "xla/pjrt/distributed/distributed.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_executable.h"
-#include "xla/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-
-absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
-    absl::string_view device_type, absl::string_view address, int node_id,
-    int num_nodes, bool enable_mock_nccl,
-    std::unique_ptr<xla::DistributedRuntimeService>& service,
-    std::shared_ptr<xla::KeyValueStoreInterface>& kv_store);
 
 // Supported input formats for the input HLO module.
 enum class InputFormat {
@@ -220,17 +211,6 @@ class FunctionalHloRunner {
     int partitions = 1;
   };
 
-  // Create a PjRtClient which can run HLOs on Host CPU.
-  static absl::StatusOr<std::unique_ptr<PjRtClient>> CreateHostClient();
-
-  // Create a PjRtClient which can run HLOs on GPU.
-  static absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient(
-      GpuClientOptions options);
-
-  // Create a PjRtClient which mocks multi-hosts GPU run
-  static absl::StatusOr<std::unique_ptr<PjRtClient>> CreateMockGpuClient(
-      int num_nodes = 1);
-
   // Loads an ExecutionOptions proto (which can be used in RawCompileOptions).
   static absl::StatusOr<ExecutionOptions> LoadExecutionOptions(
       absl::string_view path);
@@ -311,7 +291,8 @@ class FunctionalHloRunner {
   static absl::StatusOr<PerDeviceLiteralVecType> Run(
       PjRtClient& client, PjRtLoadedExecutable* executable,
       const PerDeviceLiteralVecType& arguments,
-      const RunningOptions& running_options);
+      const RunningOptions& running_options,
+      std::minstd_rand0* engine = nullptr);
 
   static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
       absl::string_view hlo_file);
@@ -371,7 +352,8 @@ class FunctionalHloRunner {
   CreateArgumentsOnDevice(PjRtClient& client,
                           const PjRtLoadedExecutable* executable,
                           const RunningOptions& running_options,
-                          bool flatten_arguments = false);
+                          bool flatten_arguments = false,
+                          std::minstd_rand0* engine = nullptr);
 
   // Creates uninitialized arguments to run the given executable.
   static absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>

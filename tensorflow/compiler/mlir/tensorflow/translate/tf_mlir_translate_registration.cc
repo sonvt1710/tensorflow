@@ -20,10 +20,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
@@ -129,9 +129,9 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
   std::unique_ptr<tensorflow::FunctionLibraryDefinition> flib_def;
   auto graph =
       std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
-
-  auto status =
-      tensorflow::ConvertMlirToGraph(module, confs, &graph, flib_def.get());
+  absl::flat_hash_set<tensorflow::Node*> control_ret_nodes;
+  auto status = tensorflow::tf2xla::v2::ConvertMlirToGraph(
+      module, confs, &graph, flib_def.get(), &control_ret_nodes);
   if (!status.ok()) {
     LOG(ERROR) << "Export to Graph failed: " << status;
     return mlir::failure();

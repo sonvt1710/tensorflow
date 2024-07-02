@@ -38,13 +38,13 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -54,13 +54,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"  // IWYU pragma: keep
 #include "tsl/platform/logging.h"
 #include "tsl/platform/ml_dtypes.h"
-
-namespace tsl {
-// Forward declare AsyncValueRef to enable implicit conversion from XLA errors
-// to error async values.
-template <typename T>
-class AsyncValueRef;
-}  // namespace tsl
 
 namespace xla {
 
@@ -253,11 +246,6 @@ absl::Status AppendStatus(absl::Status prior, absl::string_view context);
 #define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX(error_type)        \
   /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
   operator absl::Status() const { return status; }                       \
-  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
-  template <typename T>                                                  \
-  operator tsl::AsyncValueRef<T>() const {                               \
-    return status;                                                       \
-  }                                                                      \
   }                                                                      \
   ;                                                                      \
   /*Deduction guide to make variadic arguments play nice with default */ \
