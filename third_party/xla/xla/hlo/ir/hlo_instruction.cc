@@ -63,13 +63,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_lexer.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
@@ -2174,8 +2174,10 @@ HloInstruction::CreateDynamicReshape(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
-    const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root) {
-  return std::make_unique<HloFusionInstruction>(shape, fusion_kind, fused_root);
+    const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root,
+    absl::string_view prefix) {
+  return std::make_unique<HloFusionInstruction>(shape, fusion_kind, fused_root,
+                                                prefix);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
@@ -3251,6 +3253,55 @@ absl::Status HloInstruction::Defuse() {
   HloModule* module = GetModule();
   TF_RETURN_IF_ERROR(parent()->RemoveInstruction(this));
   return module->RemoveEmbeddedComputation(fused_computation);
+}
+
+absl::StatusOr<HloInstruction*> HloInstruction::UnfuseInstruction(
+    HloInstruction* instruction) {
+  CHECK_EQ(opcode(), HloOpcode::kFusion);
+
+  std::vector<HloInstruction*> new_operands;
+  // Gather the operands that need to be extracted from the fusion.
+  for (int64_t operand_num = 0; operand_num < instruction->operand_count();
+       ++operand_num) {
+    HloInstruction* operand = instruction->mutable_operand(operand_num);
+    if (operand->opcode() == HloOpcode::kParameter) {
+      // If the operand is a parameter of the fusion, we need to extract it.
+      HloInstruction* extracted_operand =
+          mutable_operand(operand->parameter_number());
+      new_operands.push_back(extracted_operand);
+    } else if (operand->opcode() == HloOpcode::kConstant) {
+      HloInstruction* cloned_constant = AddInstruction(operand->Clone());
+      new_operands.push_back(cloned_constant);
+    } else if (operand->opcode() == HloOpcode::kBroadcast &&
+               operand->operand(0)->opcode() == HloOpcode::kConstant) {
+      HloInstruction* cloned_constant =
+          AddInstruction(operand->operand(0)->Clone());
+      new_operands.push_back(AddInstruction(
+          operand->CloneWithNewOperands(operand->shape(), {cloned_constant})));
+    } else {
+      return InvalidArgument(
+          "Unsupported operand type for unfusing: %s. Currently only "
+          "parameters and constants are supported.",
+          operand->ToString());
+    }
+  }
+
+  // Clone the instruction to be unfused.
+  HloInstruction* unfused_instruction = AddInstruction(
+      instruction->CloneWithNewOperands(instruction->shape(), new_operands));
+
+  // Add the unfused instruction as a parameter to the fusion instruction.
+  HloComputation* fusion_computation = fused_instructions_computation();
+
+  HloInstruction* new_parameter = AddFusionOperand(unfused_instruction);
+  // Replace the instruction in the fusion computation with the new parameter.
+  TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_parameter));
+
+  // Remove the original instruction from the fusion computation.
+  TF_RETURN_IF_ERROR(
+      fusion_computation->RemoveInstructionAndUnusedOperands(instruction));
+
+  return unfused_instruction;
 }
 
 absl::Status HloInstruction::ReplaceUsesWith(

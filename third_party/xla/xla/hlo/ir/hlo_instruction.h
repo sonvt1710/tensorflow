@@ -1347,7 +1347,8 @@ class HloInstruction {
   // "fused_root". Additional instructions can be added to the fusion
   // instruction with the method FuseInstruction.
   static std::unique_ptr<HloInstruction> CreateFusion(
-      const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root);
+      const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root,
+      absl::string_view prefix = "");
 
   static std::unique_ptr<HloInstruction> CreateFusion(
       const Shape& shape, FusionKind fusion_kind,
@@ -1684,6 +1685,13 @@ class HloInstruction {
 
   // Decomposes fusion back to individual parts.
   absl::Status Defuse();
+
+  // Unfuses the given instruction from its fusion computation. If the given
+  // instruction is not fused, this is a no-op and returns nullptr. Returns a
+  // pointer to the newly unfused instruction if successful. Currently, fused
+  // instructions with parameter or constant operands are supported.
+  absl::StatusOr<HloInstruction*> UnfuseInstruction(
+      HloInstruction* instruction);
 
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use

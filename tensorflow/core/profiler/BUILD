@@ -105,10 +105,10 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
-        "@local_tsl//tsl/profiler/utils:time_utils_impl",
         "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
         "@local_xla//xla/tsl/profiler/backends/cpu:threadpool_listener",
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
+        "@local_xla//xla/tsl/profiler/utils:time_utils_impl",
     ],
     alwayslink = True,
 )
@@ -179,14 +179,12 @@ filegroup(
 # py_proto_library(
 #     name = "profiler_analysis_proto_py_pb2",
 #     has_services = 1,
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":profiler_analysis_proto"],
 # )
 #
 # py_proto_library(
 #     name = "protos_all_py_pb2",
-#     api_version = 2,
 #     visibility = [":friends"],
 #     deps = [":protos_all"],
 # )

@@ -20,10 +20,6 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
-*   TensorFlow now supports and is compiled with NumPy 2.0 by default.
-    Compatibility with NumPy 1.26 will be maintained until 2025, aligning with
-    community standard deprecation timeline [here](https://scientific-python.org/specs/spec-0000/).
-
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -75,6 +71,10 @@ This release contains contributions from many people at Google, as well as:
 
 * TensorRT support is disabled in CUDA builds for code health improvement.
 
+* TensorFlow now supports and is compiled with NumPy 2.0 by default. Please see the [NumPy 2 release notes](https://numpy.org/doc/stable/release/2.0.0-notes.html) and the [NumPy 2 migration guide](https://numpy.org/devdocs/numpy_2_0_migration_guide.html#numpy-2-migration-guide).
+  * Note that NumPy's type promotion rules have been changed(See [NEP 50](https://numpy.org/neps/nep-0050-scalar-promotion.html#nep50)for details). This may change the precision at which computations happen, leading either to type errors or to numerical changes to results.
+  * Tensorflow will continue to support NumPy 1.26 until 2025, aligning with community standard deprecation timeline [here](https://scientific-python.org/specs/spec-0000/).
+
 * Hermetic CUDA support is added.
 
   Hermetic CUDA uses a specific downloadable version of CUDA instead of the user’s locally installed CUDA. Bazel will download CUDA, CUDNN and NCCL distributions, and then use CUDA libraries and tools as dependencies in various Bazel targets. This enables more reproducible builds for Google ML projects and supported CUDA versions.
@@ -99,6 +99,7 @@ This release contains contributions from many people at Google, as well as:
     * Add support for `stablehlo.composite`.
     * `EmbeddingLookup` op supports per-channel quantization and `TensorType_INT4` values.
     * `FullyConnected` op supports `TensorType_INT16` activation and `TensorType_Int4` weight per-channel quantization.
+    * Enable per-tensor quantization support in dynamic range quantization of `TRANSPOSE_CONV` layer. Fixes TFLite converter [bug](https://github.com/tensorflow/tensorflow/issues/76624).
 
 * `tf.tensor_scatter_update`, `tf.tensor_scatter_add` and of other reduce types.
     * Support `bad_indices_policy`.
@@ -108,6 +109,14 @@ This release contains contributions from many people at Google, as well as:
 This release contains contributions from many people at Google, as well as:
 
 Akhil Goel, akhilgoe, Alexander Pivovarov, Amir Samani, Andrew Goodbody, Andrey Portnoy, Anthony Platanios, bernardoArcari, Brett Taylor, buptzyb, Chao, Christian Clauss, Cocoa, Daniil Kutz, Darya Parygina, dependabot[bot], Dimitris Vardoulakis, Dragan Mladjenovic, Elfie Guo, eukub, Faijul Amin, flyingcat, Frédéric Bastien, ganyu.08, Georg Stefan Schmid, Grigory Reznikov, Harsha H S, Harshit Monish, Heiner, Ilia Sergachev, Jan, Jane Liu, Jaroslav Sevcik, Kaixi Hou, Kanvi Khanna, Kristof Maar, Kristóf Maár, LakshmiKalaKadali, Lbertho-Gpsw, lingzhi98, MarcoFalke, Masahiro Hiramori, Mmakevic-Amd, mraunak, Nobuo Tsukamoto, Notheisz57, Olli Lupton, Pearu Peterson, pemeliya, Peyara Nando, Philipp Hack, Phuong Nguyen, Pol Dellaiera, Rahul Batra, Ruturaj Vaidya, sachinmuradi, Sergey Kozub, Shanbin Ke, Sheng Yang, shengyu, Shraiysh, Shu Wang, Surya, sushreebarsa, Swatheesh-Mcw, syzygial, Tai Ly, terryysun, tilakrayal, Tj Xu, Trevor Morris, Tzung-Han Juang, wenchenvincent, wondertx, Xuefei Jiang, Ye Huang, Yimei Sun, Yunlong Liu, Zahid Iqbal, Zhan Lu, Zoranjovanovic-Ns, Zuri Obozuwa
+
+# Release 2.17.1
+
+### Bug Fixes and Other Changes
+
+* Add necessary header files in the aar library. These are needed if developers build apps with header files unpacked from tflite aar files from maven.
+* Implement Name() for GCSWritableFile to fix the profiler trace viewer cache file generation.
+* Fix `cstring.h` missing file issue with the Libtensorflow archive.
 
 # Release 2.17.0
 
