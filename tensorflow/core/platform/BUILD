@@ -951,6 +951,7 @@ cc_library(
         ":bfloat16",
         ":platform",
         ":tstring",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:types",
         "@local_xla//xla/tsl/framework:device_type",
     ],
@@ -1222,7 +1223,7 @@ tf_cc_tests(
         "//tensorflow/core:lib_test_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:logging",
         "@zlib",
     ],
 )
