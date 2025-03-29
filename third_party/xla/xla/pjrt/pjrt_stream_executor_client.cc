@@ -827,7 +827,7 @@ PjRtStreamExecutorClient::BufferFromHostBufferInternal(
         device_shape,
         transfer_manager->ChooseCompactLayoutForShape(device_shape));
   }
-  absl::InlinedVector<int64_t, 4> shape_strides(device_shape.rank());
+  absl::InlinedVector<int64_t, 4> shape_strides(device_shape.dimensions_size());
   TF_RETURN_IF_ERROR(
       ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
@@ -1885,18 +1885,13 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorBuffer::CopyToDeviceMemorySpace(
     PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space) {
-  if (dst_device == device_ && dst_memory_space == memory_space() &&
-      dst_memory_space->kind_id() != PinnedHostMemorySpace::kKindId) {
-    return InvalidArgument(
-        "CopyToDeviceMemorySpace cannot accept the same source and destination "
-        "devices/memory");
-  }
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
-    absl::InlinedVector<int64_t, 4> byte_strides(literal->shape().rank());
+    absl::InlinedVector<int64_t, 4> byte_strides(
+        literal->shape().dimensions_size());
     TF_RETURN_IF_ERROR(
         ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
     return dst_device->client()->BufferFromHostBuffer(
@@ -2079,7 +2074,7 @@ absl::Status CheckCompatibleShapes(bool strict_shape_checking,
   // shape `pred[0]`.
   if (execution_shape.IsToken() &&
       buffer_on_device_shape.element_type() == PrimitiveType::PRED &&
-      buffer_on_device_shape.rank() == 1 &&
+      buffer_on_device_shape.dimensions_size() == 1 &&
       buffer_on_device_shape.dimensions(0) == 0) {
     return absl::OkStatus();
   }

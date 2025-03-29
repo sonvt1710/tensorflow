@@ -8,7 +8,7 @@ load(
     "if_rocm_is_configured",
     "rocm_copts",
 )
-load("//xla:xla.bzl", "xla_cc_test", "xla_internal")
+load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/service/gpu:build_defs.bzl",
     "build_cub_sort_kernels",
@@ -1528,6 +1528,7 @@ cc_library(
         "//xla/service/gpu/transforms:dot_operand_converter",
         "//xla/service/gpu/transforms:double_buffer_loop_unrolling",
         "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",
+        "//xla/service/gpu/transforms:explicit_collectives_group_async_wrapper",
         "//xla/service/gpu/transforms:explicit_stream_annotation_async_wrapper",
         "//xla/service/gpu/transforms:fusion_block_level_rewriter",
         "//xla/service/gpu/transforms:fusion_wrapper",
@@ -2488,12 +2489,12 @@ xla_cc_test(
         ":gpu_device_info_for_tests",
         ":hlo_fusion_analysis",
         ":ir_emission_utils",
-        "//xla:protobuf_util",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
     ],

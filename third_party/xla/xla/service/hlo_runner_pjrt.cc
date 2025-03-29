@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -278,6 +277,8 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
       !run_hlo_passes);
   *compile_options.executable_build_options.mutable_debug_options() =
       module->config().debug_options();
+  *compile_options.executable_build_options.mutable_comp_envs() =
+      module->comp_envs();
 
   std::vector<Shape> parameter_shapes;
   parameter_shapes.reserve(
@@ -502,11 +503,7 @@ HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
-HloRunnerPjRt::DeserializeExecutable(
-    absl::Nonnull<const tsl::protobuf::Message*> serialized) const {
-  std::string serialized_string;
-  serialized->SerializeToString(&serialized_string);
-
+HloRunnerPjRt::DeserializeExecutable(const absl::string_view serialized) const {
   // TODO: b/237720161 - According to the comment in the base class, the
   // `options` argument is mandatory. However, our implementation is capable of
   // handling the default case where it is not present. The options are
@@ -515,7 +512,7 @@ HloRunnerPjRt::DeserializeExecutable(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtLoadedExecutable> executable,
       pjrt_client_->LoadSerializedExecutable(
-          serialized_string, /*options=*/std::nullopt, xla::LoadOptions()));
+          serialized, /*options=*/std::nullopt, xla::LoadOptions()));
   return std::make_unique<HloRunnerPjRtExecutable>(this, std::move(executable));
 }
 
@@ -826,6 +823,30 @@ HloRunnerPjRt::HloModuleFromWrapped(const OpaqueExecutable* wrapped) const {
     return modules.front().get();
   }
   return absl::NotFoundError("PjRtLoadedExecutable has no modules.");
+}
+
+bool HloRunnerPjRt::ExecutablesAreEquivalent(
+    absl::Nonnull<const OpaqueExecutable*> lhs,
+    absl::Nonnull<const OpaqueExecutable*> rhs) const {
+  constexpr auto kFingerprint =
+      [](const absl::StatusOr<const HloRunnerPjRtExecutable*> wrapped)
+      -> absl::StatusOr<std::string> {
+    TF_ASSIGN_OR_RETURN(const HloRunnerPjRtExecutable* const executable,
+                        wrapped);
+    return executable->pjrt_loaded_executable()->FingerprintExecutable();
+  };
+
+  const absl::StatusOr<std::string> lhs_fingerprint =
+      kFingerprint(HloRunnerPjRtExecutable::TryUnwrap(*this, lhs));
+  if (!lhs_fingerprint.ok()) {
+    return false;
+  }
+  const absl::StatusOr<std::string> rhs_fingerprint =
+      kFingerprint(HloRunnerPjRtExecutable::TryUnwrap(*this, rhs));
+  if (!rhs_fingerprint.ok()) {
+    return false;
+  }
+  return *lhs_fingerprint == *rhs_fingerprint;
 }
 
 }  // namespace xla

@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
@@ -67,7 +68,7 @@ class Shape {
   // Precondition:
   //  - `element_type` must be a valid array type.
   //  - `dynamic_dimensions` must be either empty or have the same size as
-  //    `dimensions`.
+  //    `dimensions`. If it's empty, all dimensions are static.
   Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
         absl::Span<const bool> dynamic_dimensions);
 
@@ -87,11 +88,6 @@ class Shape {
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
   std::string ToString(bool print_layout = false) const;
-
-  // Returns the rank (number of dimensions) of the given shape. Returns 0 for
-  // non-array shapes.
-  ABSL_DEPRECATED("Use dimensions().size() instead.")
-  int64_t rank() const { return dimensions().size(); }
 
   // Returns whether the shape is of the specified type (array, tuple, etc).
   bool IsArray() const { return primitive_util::IsArrayType(element_type()); }
@@ -176,8 +172,8 @@ class Shape {
   void set_element_type(PrimitiveType value) { element_type_ = value; }
 
   // Methods for accessing the dimensions array.
-  ABSL_DEPRECATED("Use dimensions().size() instead.")
-  int dimensions_size() const { return dimensions().size(); }
+  ABSL_DEPRECATE_AND_INLINE()
+  inline int dimensions_size() const { return dimensions().size(); }
   int64_t dimensions(int index) const { return dimensions_[index]; }
 
   int64_t dimensions_minor(int index) const {
